@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
 	// ./quiz -csv=test.csv 꼴로 flag를 붙인 값을 받아올 수 있음
 	csvFilename := flag.String("csv", "problems.csv", "a csv file in the format of 'question,answer'")
+	timeLimit := flag.Int("limit", 30, "time limit")
 
-	// Must be called after all flags are defined and before flags are accessed by the program.
-	flag.Parse() 
+	flag.Parse() // Must be called after all flags are defined and before flags are accessed by the program.
 
 	file, err := os.Open(*csvFilename)
 	if err != nil {
@@ -25,21 +26,39 @@ func main() {
 	if err != nil {
 		exit("Failed to parse the provided csv file")
 	}
+
 	problems := parseLines(lines)
-	
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
 	correct := 0
+
+	fmt.Printf("start game. time limit is %d \n", *timeLimit)
+
+problemLoop:
 	for i, p := range problems {
 		fmt.Printf("problem #%d: %s = \n", i+1, p.q)
-		var answer string
-		fmt.Scanf("%s\n", &answer)
-		if answer != p.a {
-			fmt.Printf("You're wrong! The correct answer is %s\n", p.a)
-			fmt.Printf("You scored %d\n", correct)
-			break
-		}
-		correct++
-		if correct == len(problems) {
-			fmt.Println("well done. you got it all right")
+		answerCh := make(chan string)
+
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer)
+			answerCh <- answer
+		}()
+
+		select {
+			case <- timer.C:
+				fmt.Printf("timeout. You scored %d\n", correct)
+				break problemLoop
+			case answer := <- answerCh:
+				if answer != p.a {
+					fmt.Printf("You're wrong! The correct answer is %s\n", p.a)
+					fmt.Printf("You scored %d\n", correct)
+					break problemLoop
+				}
+				correct++
+				if correct == len(problems) {
+					fmt.Println("well done. you got it all right")
+					break problemLoop
+				}
 		}
 	}
 }
